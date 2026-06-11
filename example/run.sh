@@ -11,5 +11,8 @@ find $PATHWORK/bwaindex -type f -name "*.sa" > ref_list.txt
 #because config.yaml already prepared by author, here skip
 #akgwas --init-config
 #vim config.yaml
+# Update config.yaml
 sed -i "s|^programhome: \"/home/suz/kmer_home/AKmerGWAS/example\"|programhome: \"$PATHWORK\"|" config.yaml
+# Update fof.txt
+sed -i "s|/home/suz/kmer_home/AKmerGWAS/example/sequence|$PATHWORK/sequence|g" $PATHWORK/fof.txt
 akgwas --all --configfile config.yaml --cores 8

@@ -1,0 +1,12 @@
+Metadata-Version: 2.4
+Name: akgwas
+Version: 0.1.0
+Summary: AKmerGWAS -- All input format (shor_read; assembly; genomes) k-mer GWAS
+Author: Su Zhuo
+Author-email: Su Zhuo <szsuzhuo@163.com>
+Requires-Python: <3.14,>=3.11
+Description-Content-Type: text/markdown
+License-File: LICENSE
+Requires-Dist: snakemake
+Dynamic: author
+Dynamic: license-file

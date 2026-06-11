@@ -89,17 +89,8 @@ mkdir -p "$output_dir/Matrix"
 
 start_time=$(date +%s)
 echo -e "start kmer pa matrix build: $(date)"
-# kmtricks aggregate --run-dir $output_dir/kmatrixs_out --pa-matrix kmer --cpr-in -t $thread \
-#         --format text --output $output_dir/Matrix/Origin_matrix.txt
-
-kmtricks aggregate \
-    --run-dir $output_dir/kmatrixs_out \
-    --pa-matrix kmer \
-    --cpr-in \
-    -t $thread \
-    --format text \
-    --output stdout | \
-split -b 100G --filter='bgzip -@ 8 > $FILE.gz' - $output_dir/Matrix/Matrix_part_
+kmtricks aggregate --run-dir $output_dir/kmatrixs_out --pa-matrix kmer --cpr-in -t $thread \
+        --format text --output $output_dir/Matrix/Origin_matrix.txt
 
 #when Origin_matrix.txt constructed, delet $output_dir/kmatrixs_out
 rm -rf $output_dir/kmatrixs_out

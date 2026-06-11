@@ -1,12 +1,33 @@
 #!/bin/bash
 
+## Input file can be a single matrix file or a stream from STDIN. 
+## Output is a set of bed files in the specified output directory.
+## Example usage:
+## 1. From a file:
+##    ./matrix_bed_multithreads_V3.sh \
+##      -fof sample.fof \
+##      -file input_matrix.txt \
+##      -o output_dir \
+##      -m 0.05 \
+##      -b 2G \
+##      -t 8
+## 2. From a stream:
+##    ./matrix_bed_multithreads_V3.sh \
+##      -fof sample.fof \
+##      -file <(pigz -dc Path/to/matrices/Matrix_part_*.gz) \
+##      -o output_dir \
+##      -m 0.05 \
+##      -b 2G \
+##      -t 8
+
 set -euo pipefail
 
 thread=8
-blocksize=10G
+blocksize=2G
 fof_file=""
 input_file=""
 output_dir=""
+maf=0.05
 
 #Parsing command line arguments
 while [[ "$#" -gt 0 ]]; do
@@ -22,57 +43,78 @@ while [[ "$#" -gt 0 ]]; do
     shift
 done
 
+# Ensure output directory exists
+mkdir -p "$output_dir/bed"
+log_file="$output_dir/kmatrix_to_bed.log"
+
 {
 start_time=$(date +%s)
-echo "Start maf filter: start time: $(date)"
+echo "Start maf filter and BED conversion: $(date)"
 
-#Run here
-mkdir -p $output_dir/temp
-mkdir -p $output_dir/bed
+# Calculate sample counts and the limit for filtering
+# Note: The original logic filters out k-mers present in > (N - MAF*N) samples
+Num_samples=$(wc -l < "$fof_file")
+lower_limit=$(awk -v n="$Num_samples" -v m="$maf" 'BEGIN{print n * m}')
+upper_limit=$(awk -v n="$Num_samples" -v m="$maf" 'BEGIN{print n * (1 - m)}')
 
-Num_samples=$(wc -l < $fof_file)
-limit_count=$(awk -v n=$Num_samples -v maf=$maf 'BEGIN{print int(n - maf*n)}')
-cut -d ' ' -f1 $fof_file > $output_dir/bed/sample_id_inorder.txt
+echo "Number of samples: $Num_samples"
+echo "Filtering criteria: $lower_limit < presence_count < $upper_limit"
+
+# Prepare .tfam (Standard format for both PLINK 1.9 and 2.0)
+# PLINK2 reading TPED requires a TFAM file
+cut -d ' ' -f 1 "$fof_file" | awk '{print "0", $1, "0 0 0 0"}' > "$output_dir/bed/common.tfam"
+
+echo "Step: Processing stream and converting to BED chunks via pipe..."
+
+# Parallel processing: 
+# - Uses --pipe to distribute the zcat stream
+# - awk transforms 0/1 matrix to TPED format on-the-fly
+# - plink reads from /dev/stdin and writes directly to binary BED format
 
 parallel --pipe -j $thread --block $blocksize --max-lines 0 '
-awk -v limit='"$limit_count"' -v OFS=" " "
-{
-    zero_count=0
-    one_count=0
-    for (i=2;i<=NF;i++) {
-        if (\$i==0) zero_count++
-        else if (\$i==1) one_count++
-    }
-    if (zero_count<=limit && one_count<=limit) {
-        gsub(\"1\",\"2 2\")
-        gsub(\"0\",\"1 1\")
-        print \"1\",\$1,\"0\",\"0\",\$0
-    }
-}
-" | cut -d "' '" -f1-4,6- > '$output_dir'/temp/matrix_{#}.tped
+parallel --pipe -j "$thread" --block "$blocksize" --max-lines 0 '
+    # Create a unique temp file name for this worker
+    TMP_TPED="tmp_worker_{#}.tped"
+
+    # Step A: awk filters and writes to the local temp file
+    awk -v low="'"$lower_limit"'" -v up="'"$upper_limit"'" '\''
+    {
+        count = 0
+        for (i=2; i<=NF; i++) { if ($i == 1) count++ }
+        
+        if (count > low && count < up) {
+            out = "1 " $1 " 0 0"
+            for (i=2; i<=NF; i++) {
+                out = out ($i == 1 ? " 2 2" : " 1 1")
+            }
+            print out
+        }
+    }'\'' > "$TMP_TPED"
+
+    # Step B: Run PLINK2 if the temp file is not empty
+    if [ -s "$TMP_TPED" ]; then
+        plink2 --tped "$TMP_TPED" \
+               --tfam "'"$output_dir"'/bed/common.tfam" \
+               --make-bed \
+               --out "'"$output_dir"'/bed/matrix_{#}" \
+               --threads 1 \
+               --silent
+    fi
+
+    # Step C: Immediate cleanup of the temp file
+    rm -f "$TMP_TPED"
 ' < "$input_file"
 
-cut -d ' ' -f 1 $fof_file > $output_dir/bed/sample_id_inorder.txt
-
-#tped tfam
-for F in $(find "$output_dir/temp/" -name "matrix_*.tped" -exec basename {} .tped \;)
-do
-    awk '{print "0 "$1" 0 0 0 0" }' $output_dir/bed/sample_id_inorder.txt \
-        > $output_dir/temp/${F}.tfam
+# Validation: Count records in the generated .bim files
+echo "Step: Summarizing filtered results..."
+find "$output_dir/bed/" -name "matrix_*.bim" | sort -V | while read -r bim; do
+    count=$(wc -l < "$bim")
+    echo "Matrix $(basename "$bim" .bim) variants: $count"
 done
-
-#transfer each piece to bed
-find "$output_dir/temp/" -name "matrix_*.tped" -exec basename {} .tped \; |\
-    rush -j $thread "plink --tfile $output_dir/temp/{} --make-bed --silent --out $output_dir/bed/{}"
-
-find "$output_dir/bed/" -name "matrix_*.bed" -exec basename {} .bed \; |\
-    rush -j $thread "echo 'After filter, total rows of {} files: ' && wc -l \"$output_dir/bed/{}.bim\" | awk '{print \$1}'"
-
-#when matrix_*.bed constructed, delet $output_dir/temp/
-rm -rf $output_dir/temp/
 
 end_time=$(date +%s)
 elapsed_time=$((end_time - start_time))
-echo -e "bed build build done, end time: $(date)\ntime used: ${elapsed_time}"
 
-} > >(tee -a $output_dir/kmatrix_to_bed.log)
+echo -e "BED build done. End time: $(date)\nTotal time used: ${elapsed_time} seconds"
+
+} 2>&1 | tee -a "$log_file"

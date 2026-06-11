@@ -91,7 +91,7 @@ else:
         bash {SCRIPT_DIR}/QK_make.sh \
             -bedpath {input} \
             -o {params.outdir} \
-            -rate {params.sampling_rate}
+            -bfb {params.select}
     """
 
 ############################################
@@ -103,7 +103,7 @@ rule qkmatrix:
         pca = PCA
     params:
         outdir = QK_OUT,
-        sampling_rate = config["kgwas"]["sampling_rate"]
+        select = config["kgwas"]["NumberbedSelect"]
     shell:
         QK_CMD
 

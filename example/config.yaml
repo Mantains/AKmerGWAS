@@ -24,7 +24,7 @@ multibed:
 # Step 3: GWAS
 kgwas:
   use_external_qk: False # Whether to use external kinship and PCA matrices for GWAS. Default: False
-  NumberbedSelect: 0.2  #if use_external_qk: False, set percentage of chunks used to calculate kinship and pca
+  sampling_rate: 0.2    #if use_external_qk: False, random fraction of all genotypes used to build Q/K matrices
   kinship: "path/to/kinship.cxx.txt"  #if set use_external_qk: True; specific kinship
   pca: "path/to/pca.txt"              #if set use_external_qk: True; specific pca
   threshold: 0.0001   # Threshold for k-mer extraction: only k-mers with p-values below this threshold will be extracted for downstream analysis
@@ -33,5 +33,5 @@ kgwas:
 # Step 4: Alignment
 alignment:
   refindexlist: "ref_list.txt"        # bwa reference index list (per path/to/refindex/reference.sa per line)
-  bwamodel: "bwa"                     # No need to change unless necessary
+  bwamodel: "bwa"                     # Supports bwa or bwa-mem2, no need to change unless necessary
 

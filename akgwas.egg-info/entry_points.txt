@@ -1,0 +1,2 @@
+[console_scripts]
+akgwas = akgwas.cli:main

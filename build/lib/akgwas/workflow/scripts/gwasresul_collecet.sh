@@ -28,14 +28,6 @@ sleep 180
 for P in $(basename -a $PHENOPATH/*.txt);
 do  
     Index=$(echo ${P} | sed 's/.txt//g')
-
-    # Reset output files for each index
-    : > $OUTHOME/sigk/${Index}_sigK.txt
-    : > $OUTHOME/fasta/${Index}_fasta.txt
-    : > $OUTHOME/logs/${Index}.log_combined.txt
-    : > $OUTHOME/gemma_combine/${Index}.assoc_combined.txt
-    : > $OUTHOME/siggeno/${Index}_mergelist.txt
-
     for chunk in $(find $OUTTEMP/ -maxdepth 1 -mindepth 1 -type d -printf "%f\n")
     do
         cat $OUTTEMP/${chunk}/sigk/${Index}_sigK.txt \
